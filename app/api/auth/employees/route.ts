@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireOwner } from '@/lib/auth-guard'
+import { requireRole } from '@/lib/auth-guard'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/password'
 
@@ -27,9 +27,15 @@ const employeeSchema = z.object({
 export async function POST(request: Request) {
   try {
     // 1. Authorization Guard Check
-    const authResult = requireOwner(request)
+    const authResult = requireRole(request, ['OWNER'])
     if ('error' in authResult) {
-      return NextResponse.json({ message: authResult.message }, { status: authResult.status })
+      if (authResult.status === 401) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      return NextResponse.json(
+        { error: 'Forbidden', message: authResult.message },
+        { status: 403 }
+      )
     }
 
     let body: unknown

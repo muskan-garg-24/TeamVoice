@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAuthenticatedUser } from '@/lib/auth-guard'
+import { requireAuth } from '@/lib/auth-guard'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/password'
 
@@ -27,9 +27,9 @@ const profileUpdateSchema = z.object({
 export async function PATCH(request: Request) {
   try {
     // 1. Authenticate user
-    const authUser = getAuthenticatedUser(request)
-    if (!authUser) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 })
+    const authResult = requireAuth(request)
+    if ('error' in authResult) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     // 2. Parse body
@@ -80,7 +80,7 @@ export async function PATCH(request: Request) {
 
     // 6. Update in DB
     const updatedUser = await db.user.update({
-      where: { id: authUser.userId },
+      where: { id: authResult.userId },
       data: updateData,
     })
 
