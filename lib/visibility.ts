@@ -34,3 +34,16 @@ export function shapeComplaintForResponse<T extends { creatorId?: string; visibi
   }
   return copied
 }
+
+export function filterVisibleComplaints(
+  complaints: any[],
+  requester: {
+    userId: string
+    role: 'OWNER' | 'EMPLOYEE'
+  }
+): any[] {
+  return complaints
+    .filter((complaint) => canViewComplaint(complaint, requester))
+    .map((complaint) => shapeComplaintForResponse(complaint, requester))
+}
+
