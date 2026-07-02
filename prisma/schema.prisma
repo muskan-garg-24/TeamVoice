@@ -13,12 +13,51 @@ enum Role {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String      @id @default(uuid())
   name         String
-  email        String   @unique
+  email        String      @unique
   phone        String?
   passwordHash String
-  role         Role     @default(EMPLOYEE)
-  createdAt    DateTime @default(now())
+  role         Role        @default(EMPLOYEE)
+  createdAt    DateTime    @default(now())
+  complaints   Complaint[]
+}
+
+enum Visibility {
+  PUBLIC
+  ANONYMOUS
+  PRIVATE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Status {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+model Complaint {
+  id          String     @id @default(uuid())
+  title       String
+  description String
+  category    String
+  priority    Priority   @default(MEDIUM)
+  visibility  Visibility @default(PUBLIC)
+  status      Status     @default(OPEN)
+  isEdited    Boolean    @default(false)
+  creatorId   String
+  creator     User       @relation(fields: [creatorId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([status])
+  @@index([visibility])
 }
 
