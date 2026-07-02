@@ -147,6 +147,7 @@ export async function GET(request: Request) {
         status: {
           in: statuses,
         },
+        deletedAt: null,
       },
       orderBy: {
         createdAt: 'desc',

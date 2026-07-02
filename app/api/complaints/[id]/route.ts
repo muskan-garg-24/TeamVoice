@@ -60,9 +60,9 @@ export async function GET(
 
     const complaintId = idValidation.data
 
-    // 3. Fetch complaint
-    const complaint = await db.complaint.findUnique({
-      where: { id: complaintId },
+    // 3. Fetch complaint where deletedAt is null
+    const complaint = await db.complaint.findFirst({
+      where: { id: complaintId, deletedAt: null },
     })
 
     if (!complaint) {
@@ -124,9 +124,9 @@ export async function PATCH(
 
     const complaintId = idValidation.data
 
-    // 3. Fetch complaint
-    const complaint = await db.complaint.findUnique({
-      where: { id: complaintId },
+    // 3. Fetch complaint where deletedAt is null
+    const complaint = await db.complaint.findFirst({
+      where: { id: complaintId, deletedAt: null },
     })
 
     if (!complaint) {
@@ -215,3 +215,71 @@ export async function PATCH(
   }
 }
 
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    // 1. Authenticate user
+    const authResult = requireAuth(request)
+    if ('error' in authResult) {
+      if (authResult.status === 401) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      return NextResponse.json(
+        { error: 'Forbidden', message: authResult.message },
+        { status: 403 }
+      )
+    }
+
+    // 2. Validate params.id
+    const resolvedParams = await params
+    const idValidation = z.string().uuid().safeParse(resolvedParams.id)
+    if (!idValidation.success) {
+      return NextResponse.json({ message: 'Complaint not found' }, { status: 404 })
+    }
+
+    const complaintId = idValidation.data
+
+    // 3. Fetch complaint where deletedAt is null
+    const complaint = await db.complaint.findFirst({
+      where: { id: complaintId, deletedAt: null },
+    })
+
+    if (!complaint) {
+      return NextResponse.json({ message: 'Complaint not found' }, { status: 404 })
+    }
+
+    // 4. Authorization: Creator or Owner
+    const isCreator = authResult.userId === complaint.creatorId
+    const isOwner = authResult.role === 'OWNER'
+    if (!isCreator && !isOwner) {
+      return NextResponse.json(
+        {
+          error: 'Forbidden',
+          message: 'Only the creator or Owner can delete this complaint',
+        },
+        { status: 403 }
+      )
+    }
+
+    // 5. Perform SOFT delete
+    await db.complaint.update({
+      where: { id: complaintId },
+      data: { deletedAt: new Date() },
+    })
+
+    // 6. Return 200 success
+    return NextResponse.json(
+      { message: 'Complaint deleted successfully' },
+      { status: 200 }
+    )
+  } catch (error) {
+    // Log actual error server-side only
+    console.error('Error deleting complaint:', error)
+    return NextResponse.json(
+      { message: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}

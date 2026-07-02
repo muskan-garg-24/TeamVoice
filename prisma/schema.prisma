@@ -56,6 +56,7 @@ model Complaint {
   creator     User       @relation(fields: [creatorId], references: [id])
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  deletedAt   DateTime?
 
   @@index([status])
   @@index([visibility])
