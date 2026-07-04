@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireAuth } from '@/lib/auth-guard'
 import { db } from '@/lib/db'
+import { Status } from '@prisma/client'
+import { validateTransition } from '@/lib/status-rules'
 
 const statusUpdateSchema = z.object({
-  toStatus: z.string(),
-  note: z.string().optional(),
+  toStatus: z.nativeEnum(Status),
+  note: z.string().optional().nullable(),
 })
 
 export async function PATCH(
@@ -25,7 +27,7 @@ export async function PATCH(
       )
     }
 
-    // 2. Validate params.id
+    // 2. Validate params.id (UUID)
     const resolvedParams = await params
     const idValidation = z.string().uuid().safeParse(resolvedParams.id)
     if (!idValidation.success) {
@@ -43,20 +45,7 @@ export async function PATCH(
       return NextResponse.json({ message: 'Complaint not found' }, { status: 404 })
     }
 
-    // 4. Authorization: Creator or OWNER
-    const isCreator = authResult.userId === complaint.creatorId
-    const isOwner = authResult.role === 'OWNER'
-    if (!isCreator && !isOwner) {
-      return NextResponse.json(
-        {
-          error: 'Forbidden',
-          message: 'You do not have permission to perform this action',
-        },
-        { status: 403 }
-      )
-    }
-
-    // 5. Parse body
+    // Parse body
     let body: any
     try {
       body = await request.json()
@@ -68,7 +57,7 @@ export async function PATCH(
       return NextResponse.json({ message: 'Invalid request body' }, { status: 400 })
     }
 
-    // 6. Validate input with Zod
+    // Validate input with Zod
     const result = statusUpdateSchema.safeParse(body)
     if (!result.success) {
       return NextResponse.json(
@@ -79,40 +68,58 @@ export async function PATCH(
 
     const { toStatus, note } = result.data
 
-    // 7. Validate status transition (Only OPEN -> IN_PROGRESS is supported)
-    if (toStatus !== 'IN_PROGRESS' || complaint.status !== 'OPEN') {
+    // 4. Permission check
+    const isCreator = authResult.userId === complaint.creatorId
+    const isOwner = authResult.role === 'OWNER'
+
+    let isAuthorized = false
+    if (complaint.status === 'OPEN' && toStatus === 'IN_PROGRESS') {
+      isAuthorized = isCreator || isOwner
+    } else if (complaint.status === 'IN_PROGRESS' && toStatus === 'RESOLVED') {
+      isAuthorized = isCreator || isOwner
+    } else if (complaint.status === 'OPEN' && toStatus === 'REJECTED') {
+      isAuthorized = isOwner
+    } else if (complaint.status === 'IN_PROGRESS' && toStatus === 'REJECTED') {
+      isAuthorized = isOwner
+    } else if (complaint.status === 'RESOLVED' && toStatus === 'OPEN') {
+      isAuthorized = isCreator || isOwner
+    }
+
+    if (!isAuthorized) {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 })
+    }
+
+    // 5. Validate status transition
+    const transitionValidation = validateTransition(complaint.status, toStatus, note)
+    if (!transitionValidation.valid) {
       return NextResponse.json(
-        { message: 'Only OPEN → IN_PROGRESS is supported in this version' },
-        { status: 400 }
+        { message: transitionValidation.message },
+        { status: transitionValidation.status }
       )
     }
 
-    // 8. Process note
-    let finalNote: string | null = null
+    // Process note (trimmed note or null)
+    let trimmedNote: string | null = null
     if (note !== undefined && note !== null) {
       const trimmed = note.trim()
-      if (trimmed === '') {
-        finalNote = null
-      } else {
-        finalNote = trimmed
-      }
+      trimmedNote = trimmed === '' ? null : trimmed
     }
 
-    // 9. Execute transaction
+    // 6. Execute transaction
     const transactionResult = await db.$transaction(async (tx) => {
       // Update complaint status
       await tx.complaint.update({
         where: { id: complaintId },
-        data: { status: 'IN_PROGRESS' },
+        data: { status: toStatus },
       })
 
-      // Insert StatusHistory entry
+      // Create StatusHistory entry
       const historyEntry = await tx.statusHistory.create({
         data: {
           complaintId,
-          fromStatus: 'OPEN',
-          toStatus: 'IN_PROGRESS',
-          note: finalNote,
+          fromStatus: complaint.status,
+          toStatus,
+          note: trimmedNote,
           changedById: authResult.userId,
         },
       })
@@ -120,10 +127,10 @@ export async function PATCH(
       return historyEntry
     })
 
-    // 10. Return response
+    // 7. Return response
     return NextResponse.json(
       {
-        status: 'IN_PROGRESS',
+        status: toStatus,
         historyEntry: {
           id: transactionResult.id,
           fromStatus: transactionResult.fromStatus,
@@ -144,3 +151,4 @@ export async function PATCH(
     )
   }
 }
+
