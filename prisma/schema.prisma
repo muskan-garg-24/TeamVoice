@@ -13,14 +13,15 @@ enum Role {
 }
 
 model User {
-  id           String      @id @default(uuid())
-  name         String
-  email        String      @unique
-  phone        String?
-  passwordHash String
-  role         Role        @default(EMPLOYEE)
-  createdAt    DateTime    @default(now())
-  complaints   Complaint[]
+  id            String          @id @default(uuid())
+  name          String
+  email         String          @unique
+  phone         String?
+  passwordHash  String
+  role          Role            @default(EMPLOYEE)
+  createdAt     DateTime        @default(now())
+  complaints    Complaint[]
+  statusChanges StatusHistory[]
 }
 
 enum Visibility {
@@ -44,21 +45,36 @@ enum Status {
 }
 
 model Complaint {
-  id          String     @id @default(uuid())
-  title       String
-  description String
-  category    String
-  priority    Priority   @default(MEDIUM)
-  visibility  Visibility @default(PUBLIC)
-  status      Status     @default(OPEN)
-  isEdited    Boolean    @default(false)
-  creatorId   String
-  creator     User       @relation(fields: [creatorId], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  deletedAt   DateTime?
+  id            String          @id @default(uuid())
+  title         String
+  description   String
+  category      String
+  priority      Priority        @default(MEDIUM)
+  visibility    Visibility      @default(PUBLIC)
+  status        Status          @default(OPEN)
+  isEdited      Boolean         @default(false)
+  creatorId     String
+  creator       User            @relation(fields: [creatorId], references: [id])
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
+  statusHistory StatusHistory[]
 
   @@index([status])
   @@index([visibility])
+}
+
+model StatusHistory {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id])
+  fromStatus  Status
+  toStatus    Status
+  note        String?
+  changedById String
+  changedBy   User      @relation(fields: [changedById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([complaintId])
 }
 
